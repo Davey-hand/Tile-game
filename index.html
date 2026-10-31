@@ -1,0 +1,448 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Babydoll Tiles</title>
+
+<style>
+* {
+    box-sizing: border-box;
+    touch-action: manipulation;
+}
+
+body {
+    margin: 0;
+    background: #090b16;
+    color: white;
+    font-family: Arial, sans-serif;
+    text-align: center;
+}
+
+header {
+    padding: 15px;
+    font-size: 24px;
+    font-weight: bold;
+}
+
+header span {
+    color: #ff5fa2;
+}
+
+.stats {
+    display: flex;
+    justify-content: space-around;
+    padding: 10px;
+}
+
+.stat {
+    background: #171c30;
+    padding: 12px;
+    border-radius: 12px;
+    width: 30%;
+}
+
+.stat small {
+    display: block;
+    color: #aaa;
+}
+
+.stat strong {
+    font-size: 23px;
+}
+
+.controls {
+    margin: 12px;
+}
+
+button, label {
+    background: #ff5fa2;
+    color: white;
+    border: none;
+    padding: 12px 16px;
+    border-radius: 10px;
+    font-weight: bold;
+    cursor: pointer;
+}
+
+#fileInput {
+    display: none;
+}
+
+#game {
+    position: relative;
+    height: 65vh;
+    margin: 10px;
+    overflow: hidden;
+    border: 2px solid #343953;
+    border-radius: 15px;
+    background: #11162a;
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+}
+
+.lane {
+    border-right: 1px solid #333;
+    height: 100%;
+}
+
+.tile {
+    position: absolute;
+    width: calc(25% - 10px);
+    height: 120px;
+    background: linear-gradient(145deg, #252b42, #090d18);
+    border: 1px solid #777;
+    border-radius: 10px;
+    box-shadow: 0 5px 0 #050711;
+    color: #69738f;
+    font-size: 12px;
+    display: flex;
+    justify-content: center;
+    align-items: end;
+    padding-bottom: 10px;
+}
+
+.tile.hit {
+    background: #62e6ff;
+}
+
+.tile.missed {
+    background: #ff5474;
+}
+
+#overlay {
+    position: absolute;
+    inset: 0;
+    background: #080b16dd;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 5;
+    padding: 20px;
+}
+
+.modal {
+    background: #171c30;
+    border: 1px solid #555;
+    border-radius: 18px;
+    padding: 25px;
+    width: 90%;
+}
+
+.modal p {
+    color: #bbb;
+    line-height: 1.5;
+}
+
+.hidden {
+    display: none !important;
+}
+
+footer {
+    color: #888;
+    font-size: 11px;
+    padding: 10px;
+}
+</style>
+</head>
+
+<body>
+
+<header>BABYDOLL <span>TILES</span></header>
+
+<div class="stats">
+    <div class="stat">
+        <small>Score</small>
+        <strong id="score">0</strong>
+    </div>
+
+    <div class="stat">
+        <small>Best</small>
+        <strong id="best">0</strong>
+    </div>
+
+    <div class="stat">
+        <small>Speed</small>
+        <strong id="speed">1.0x</strong>
+    </div>
+</div>
+
+<div class="controls">
+    <button onclick="startGame()">START GAME</button>
+
+    <label for="fileInput">ADD SONG</label>
+    <input type="file" id="fileInput" accept="audio/*">
+
+    <button onclick="window.open('https://www.youtube.com/results?search_query=Jamie+Miller+Babydoll')">
+        YOUTUBE
+    </button>
+</div>
+
+<p id="message">Tap the black tiles before they reach the bottom!</p>
+
+<div id="game">
+    <div class="lane"></div>
+    <div class="lane"></div>
+    <div class="lane"></div>
+    <div class="lane"></div>
+
+    <div id="overlay">
+        <div class="modal">
+            <h2>Ready to Play?</h2>
+            <p>Tap the falling tiles. The game gets faster as your score increases!</p>
+            <button onclick="startGame()">PLAY</button>
+        </div>
+    </div>
+</div>
+
+<audio id="song" loop></audio>
+
+<footer>
+    Beat your high score and see how long you can survive!
+</footer>
+
+<script>
+
+let score = 0;
+let best = Number(localStorage.getItem("babydollBest") || 0);
+let speed = 1;
+let tiles = [];
+let running = false;
+let lastTime = 0;
+let spawnTime = 0;
+let animation;
+
+const game = document.getElementById("game");
+const scoreDisplay = document.getElementById("score");
+const bestDisplay = document.getElementById("best");
+const speedDisplay = document.getElementById("speed");
+const overlay = document.getElementById("overlay");
+const song = document.getElementById("song");
+
+bestDisplay.textContent = best;
+
+// Start game
+function startGame() {
+
+    cancelAnimationFrame(animation);
+
+    tiles.forEach(tile => tile.element.remove());
+    tiles = [];
+
+    score = 0;
+    speed = 1;
+    spawnTime = 0;
+
+    scoreDisplay.textContent = score;
+    speedDisplay.textContent = "1.0x";
+
+    running = true;
+    overlay.classList.add("hidden");
+
+    lastTime = performance.now();
+
+    if (song.src) {
+        song.currentTime = 0;
+        song.play().catch(() => {});
+    }
+
+    createTile();
+
+    animation = requestAnimationFrame(gameLoop);
+}
+
+// Create falling tile
+function createTile() {
+
+    const lane = Math.floor(Math.random() * 4);
+
+    const tile = document.createElement("div");
+
+    tile.className = "tile";
+    tile.textContent = "TAP";
+
+    const laneWidth = game.clientWidth / 4;
+
+    tile.style.left = (lane * laneWidth + 5) + "px";
+    tile.style.top = "-130px";
+
+    game.appendChild(tile);
+
+    const tileObject = {
+        element: tile,
+        lane: lane,
+        y: -130,
+        hit: false
+    };
+
+    tiles.push(tileObject);
+
+    tile.addEventListener("pointerdown", function(event) {
+        event.preventDefault();
+        hitTile(tileObject);
+    });
+}
+
+// Hit tile
+function hitTile(tile) {
+
+    if (!running || tile.hit) return;
+
+    if (tile.y > game.clientHeight - tile.element.offsetHeight - 25) {
+        return;
+    }
+
+    tile.hit = true;
+
+    tile.element.classList.add("hit");
+
+    score++;
+
+    scoreDisplay.textContent = score;
+
+    speed = 1 + Math.min(2.8, score * 0.018);
+
+    speedDisplay.textContent = speed.toFixed(1) + "x";
+
+    setTimeout(() => {
+        tile.element.remove();
+        tiles = tiles.filter(t => t !== tile);
+    }, 90);
+}
+
+// Game loop
+function gameLoop(time) {
+
+    if (!running) return;
+
+    const delta = Math.min(40, time - lastTime);
+
+    lastTime = time;
+
+    spawnTime += delta;
+
+    const interval = Math.max(310, 880 - score * 5);
+
+    if (spawnTime >= interval) {
+
+        spawnTime = 0;
+
+        createTile();
+    }
+
+    const fallSpeed = (190 + score * 2.8) * speed;
+
+    for (const tile of [...tiles]) {
+
+        if (tile.hit) continue;
+
+        tile.y += fallSpeed * delta / 1000;
+
+        tile.element.style.top = tile.y + "px";
+
+        if (tile.y + tile.element.offsetHeight >= game.clientHeight - 12) {
+
+            tile.element.classList.add("missed");
+
+            endGame();
+
+            return;
+        }
+    }
+
+    animation = requestAnimationFrame(gameLoop);
+}
+
+// End game
+function endGame() {
+
+    running = false;
+
+    song.pause();
+
+    if (score > best) {
+
+        best = score;
+
+        localStorage.setItem("babydollBest", best);
+
+        bestDisplay.textContent = best;
+    }
+
+    overlay.innerHTML = `
+        <div class="modal">
+            <h2>GAME OVER!</h2>
+
+            <p>Your score: ${score}</p>
+
+            <p>Best score: ${best}</p>
+
+            <button onclick="startGame()">PLAY AGAIN</button>
+        </div>
+    `;
+
+    overlay.classList.remove("hidden");
+}
+
+// Add music
+document.getElementById("fileInput").addEventListener("change", function(event) {
+
+    const file = event.target.files[0];
+
+    if (!file) return;
+
+    song.src = URL.createObjectURL(file);
+
+    document.getElementById("message").textContent =
+        "Song loaded: " + file.name;
+});
+
+// Keyboard support
+document.addEventListener("keydown", function(event) {
+
+    if (!running) return;
+
+    const keys = {
+        ArrowLeft: 0,
+        ArrowDown: 1,
+        ArrowUp: 2,
+        ArrowRight: 3
+    };
+
+    const lane = keys[event.key];
+
+    if (lane === undefined) return;
+
+    const tile = tiles
+        .filter(t => !t.hit && t.lane === lane)
+        .sort((a, b) => b.y - a.y)[0];
+
+    if (tile) hitTile(tile);
+});
+
+// Tap empty lane area
+game.addEventListener("pointerdown", function(event) {
+
+    if (!running) return;
+
+    if (event.target !== game &&
+        !event.target.classList.contains("lane")) return;
+
+    const rect = game.getBoundingClientRect();
+
+    const lane = Math.min(
+        3,
+        Math.floor((event.clientX - rect.left) / (game.clientWidth / 4))
+    );
+
+    const tile = tiles
+        .filter(t => !t.hit && t.lane === lane)
+        .sort((a, b) => b.y - a.y)[0];
+
+    if (tile) hitTile(tile);
+});
+
+</script>
+
+</body>
+</html>
